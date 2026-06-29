@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
-import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
+import { createId, moveCard, type BoardData } from "@/lib/kanban";
 import { fetchBoard, saveBoard } from "@/lib/boardApi";
 import {
   applyBoardActions,
@@ -23,7 +23,7 @@ import {
 } from "@/lib/aiApi";
 
 export const KanbanBoard = () => {
-  const [board, setBoard] = useState<BoardData>(() => initialData);
+  const [board, setBoard] = useState<BoardData | null>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -43,7 +43,7 @@ export const KanbanBoard = () => {
     })
   );
 
-  const cardsById = useMemo(() => board.cards, [board.cards]);
+  const cardsById = useMemo(() => board?.cards ?? {}, [board?.cards]);
 
   useEffect(() => {
     const loadBoard = async () => {
@@ -98,6 +98,9 @@ export const KanbanBoard = () => {
 
   const updateBoard = (updater: (prev: BoardData) => BoardData) => {
     setBoard((prev) => {
+      if (!prev) {
+        return prev;
+      }
       const next = updater(prev);
       schedulePersist(next);
       return next;
@@ -194,7 +197,7 @@ export const KanbanBoard = () => {
   };
 
   const handleConfirmAIApply = async () => {
-    if (!pendingActions || pendingActions.length === 0 || isApplyingAi) {
+    if (!pendingActions || pendingActions.length === 0 || isApplyingAi || !board) {
       return;
     }
 
@@ -249,6 +252,8 @@ export const KanbanBoard = () => {
             {saveError}
           </div>
         ) : null}
+        {board ? (
+        <>
         <header className="flex flex-col gap-6 rounded-[32px] border border-[var(--stroke)] bg-white/80 p-8 shadow-[var(--shadow)] backdrop-blur">
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div>
@@ -409,6 +414,8 @@ export const KanbanBoard = () => {
             </form>
           </aside>
         </div>
+        </>
+        ) : null}
       </main>
     </div>
   );
