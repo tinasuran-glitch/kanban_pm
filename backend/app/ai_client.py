@@ -85,8 +85,8 @@ class OpenRouterAIClient:
             "board": board,
         }
 
-        try:
-            completion = client.chat.completions.create(
+        def _request(max_tokens: int):
+            return client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {
@@ -100,8 +100,21 @@ class OpenRouterAIClient:
                 ],
                 response_format={"type": "json_object"},
                 temperature=0,
-                max_tokens=220,
+                max_tokens=max_tokens,
             )
+
+        def _parse_response_text(raw_text: str) -> dict[str, Any]:
+            try:
+                return json.loads(raw_text)
+            except json.JSONDecodeError:
+                start = raw_text.find("{")
+                end = raw_text.rfind("}")
+                if start != -1 and end != -1 and end > start:
+                    return json.loads(raw_text[start : end + 1])
+                raise
+
+        try:
+            completion = _request(max_tokens=220)
         except APIConnectionError as exc:
             raise AIConnectionError("Unable to reach AI provider") from exc
         except APIStatusError as exc:
@@ -109,10 +122,35 @@ class OpenRouterAIClient:
 
         message = completion.choices[0].message.content if completion.choices else None
         text = (message or "").strip()
+
         if not text:
-            raise AIProviderError("AI provider returned an empty response")
+            try:
+                completion = _request(max_tokens=320)
+            except APIConnectionError as exc:
+                raise AIConnectionError("Unable to reach AI provider") from exc
+            except APIStatusError as exc:
+                raise AIProviderError("AI provider returned an error response") from exc
+            message = completion.choices[0].message.content if completion.choices else None
+            text = (message or "").strip()
+            if not text:
+                raise AIProviderError("AI provider returned an empty response")
 
         try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise AIInvalidResponseError("AI provider returned invalid JSON") from exc
+            return _parse_response_text(text)
+        except json.JSONDecodeError:
+            try:
+                completion = _request(max_tokens=320)
+            except APIConnectionError as exc:
+                raise AIConnectionError("Unable to reach AI provider") from exc
+            except APIStatusError as exc:
+                raise AIProviderError("AI provider returned an error response") from exc
+
+            retry_message = completion.choices[0].message.content if completion.choices else None
+            retry_text = (retry_message or "").strip()
+            if not retry_text:
+                raise AIProviderError("AI provider returned an empty response")
+
+            try:
+                return _parse_response_text(retry_text)
+            except json.JSONDecodeError as exc:
+                raise AIInvalidResponseError("AI provider returned invalid JSON") from exc
